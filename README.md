@@ -16,7 +16,7 @@ License: CC BY-NC-ND
 (https://creativecommons.org/licenses/by-nc-nd/4.0/)
 
 Distributed via: https://github.com/hawhite/LSFM-Load-And-Compute
-Permanent DOI: 
+Permanent DOI: https://doi.org/10.5281/zenodo.18451522
 
 You need:
     -A function to get the variables out of the structures
