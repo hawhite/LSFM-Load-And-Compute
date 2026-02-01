@@ -34,4 +34,6 @@ Version History:
     - v1.0 [20260201]: Original publically released version
     - v1.0.1 [20260201]: Link version of code between Zenodo and Github
 
+Functions ("diffall" and "NormalizeFLnrm") in this repository are from Christopher Connor and Christopher Gabel, who are contributors to the work.
+
 
