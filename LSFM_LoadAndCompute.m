@@ -22,7 +22,7 @@
 %       datapoints: herein "NormalizeFlnrm"
 %
 %   Version History:
-%       - v1.0 [20260201]: Original publically released version
+%       - v1.0 [20260201]: Original publicly released version
 %       -
 
 
@@ -54,3 +54,4 @@ imagesc(Comps(1).wholetrace_input);
 figure(2);clf;
 edges = linspace(-1,1,20);
 histogram(Comps(1).input_diff,'Normalization','probability','BinEdges',edges,DisplayStyle='stairs');
+
