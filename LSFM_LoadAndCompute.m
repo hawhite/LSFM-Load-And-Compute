@@ -1,5 +1,5 @@
 %%  Author and License Header
-%   Author: Hamilton White, Postdoctoral Researcher, Brigham and Women;s
+%   Author: Hamilton White, Postdoctoral Researcher, Brigham and Women's
 %   Hospital, Harvard Medical School, and Boston University
 %   Copyright (c) 2024 - present: Hamilton White
 %
@@ -89,4 +89,5 @@ end
 
 output= act;    
 end
+
 
