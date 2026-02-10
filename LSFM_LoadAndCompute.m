@@ -37,7 +37,7 @@ for i = 1:size(fileList,1)
         continue
     else
         tmp = load(fileList(i).name); % Load data
-        Comps(i).("fn") = fileList(1).name; % Capture filename
+        Comps(i).("fn") = fileList(i).name; % Capture filename
         Comps(i).("input") = tmp.activity.GCaMP; % Add raw data to Comps
         [act,flashIDX] = rmFlash(Comps(i).input);
         Comps(i).flashPeriods = flashIDX;
@@ -370,3 +370,4 @@ for ep=1:lthep
 end
 output=act;
 end
+
