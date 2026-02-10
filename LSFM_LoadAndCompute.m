@@ -60,7 +60,7 @@ ExperimentsPerformed = unique(extractBefore(fn,"_"));
 delims = cell2mat(strfind(fn,"_"));
 StrainsUsed = unique(extractBetween(fn,delims(:,1)+1,delims(:,2)-1));
 OtherConditions = unique(extractBetween(fn,delims(:,2)+1,delims(:,3)-1));
-save("Experiment_"+join([ExperimentsPerformed,StrainsUsed,OtherConditions],"_"),"Comps","skipFirst","stochasticPeriod","dT");
+save("Experiment_"+join([ExperimentsPerformed',StrainsUsed',OtherConditions'],"_"),"Comps","skipFirst","stochasticPeriod","dT");
 
 %% Plots of first set (row) of data in Comps set
 figure(1);clf;
@@ -370,4 +370,5 @@ for ep=1:lthep
 end
 output=act;
 end
+
 
