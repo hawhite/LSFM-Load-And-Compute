@@ -70,62 +70,125 @@ disp(sprintf("\t%s\n",string(extractfield(fileList,"name")'))); % Display that f
 
 Comps(size(fileList,1),1) = struct("fn",[],"input",[],"flashPeriods",[],"wholetrace_input",[],"wholetrace_diff",[],"corrs",[],"corrs_tril",[],"roiMovementDistanceMatrix",[],"meanMovementPerNeuronVolume_stochasticRegion",[],"meanStimulatedActivity",[]); % Create empty Comps structure which will contain computational outputs
 
-% Iterate by file in fileList, compute main metrics
-parfor (i = 1:size(fileList,1), num_parallel_cores);
-    if contains(fileList(i).name,"Experiment")
-        continue % Reject anything in the current folder with "Experiment" in the name --> an indicator of analysis output file!
-    else
-        tmp3 = [];
-        disp(sprintf("Now Analyzing: %s, %s",fileList(i).name,datetime("now"))); % Indicate which file is currently being analyzed and the time/date of such analysis being initiated
-        tmp = load(fileList(i).name); % Load data
-        tmp3.("fn") = string(fileList(i).name); % Capture filename, add to tmp3 structure
-        tmp3.("input") = tmp.activity.GCaMP; % Add raw data to tmp3
-        [act,flashIDX] = rmFlash(tmp3.input); % Run the rmFalsh function to get a flash-less dataset
-        tmp3.("flashPeriods") = flashIDX; % Add the indices of the flash response per video to the tmp3 structure, or empty if no flash exists
-        tmp3.("wholetrace_input") = NormalizeFlnrm(act); % Normalize data
-        tmp3.wholetrace_input(:,1:skipFirst) = nan; % Suppress 1:skipFirst datapoints due to photobleaching
-        %%% Create temporary placeholder variables to maintain size of Comps structure,
-        %%% will be replaced below if include_differentials is TRUE
-        tmp3.("wholetrace_diff") = [];
-        tmp3.("corrs") = [];
-        tril_mat = [];
-        tmp3.("corrs_tril") = [];
-        %%% End temporary placeholder variables
-        trace = double(tmp.traces); % Reduce "traces" variable of tracker output from int64 to double
-        [K,J] = size(trace,[1,2]); % Get size of trace variable
-        Dist_mat = zeros(K,J); % Create empty Distance matrix map
-        for k = 1:K
-            for j = 2:J
-                Dist_mat(k,j) = distCalc(squeeze(trace(k,j,:)),squeeze(trace(k,j-1,:))); % Compute geometric distance between roi and timepoint, enter in corresponding cell of Dist_mat
-            end
-        end
-        tmp3.("roiMovementDistanceMatrix") = Dist_mat; % Adds distance matrix to the tmp3 structure
-        tmp3.("meanMovementPerNeuronVolume_stochasticRegion") = mean(Dist_mat(:,(skipFirst+1):(skipFirst+(stochasticPeriod*60./dT))),[1,2]); % Computes mean movement per neuron-volume and adds to tmp3 structure
-        if ~isempty(tmp3.flashPeriods)
-            tmp3.("meanStimulatedActivity") = meanPeakActivity(tmp3.wholetrace_input,tmp3.flashPeriods,flash_period_to_calc); % Compute mean activation of neuron traces for 50 timepoints after each flash occurs, returns size: [neurons x flashes], add to tmp3 structure
+hasPCT = license('test', 'Distrib_Computing_Toolbox'); % Check if Parallel Computing Toolbox is installed
+
+if hasPCT && ~isequal(num_parallel_cores, 1) % Only run if toolbox exists AND num_parallel_cores ~= 1
+    fprintf('Parallel Computing Toolbox detected. Running code...\n');
+
+    if isempty(gcp('nocreate'))  % Start pool if not already running
+        parpool; % Should default to some maximum size based on the needs of the computer and the installation conditions. Manually specifying a large number may cause system instability.
+    end
+
+    % Iterate by file in fileList, compute main metrics
+    parfor (i = 1:size(fileList,1), num_parallel_cores);
+        if contains(fileList(i).name,"Experiment")
+            continue % Reject anything in the current folder with "Experiment" in the name --> an indicator of analysis output file!
         else
-            tmp3.("meanStimulatedActivity") = []; % Else: set empty variable to maintain num of variables across analyses runs
+            tmp3 = [];
+            disp(sprintf("Now Analyzing: %s, %s",fileList(i).name,datetime("now"))); % Indicate which file is currently being analyzed and the time/date of such analysis being initiated
+            tmp = load(fileList(i).name); % Load data
+            tmp3.("fn") = string(fileList(i).name); % Capture filename, add to tmp3 structure
+            tmp3.("input") = tmp.activity.GCaMP; % Add raw data to tmp3
+            [act,flashIDX] = rmFlash(tmp3.input); % Run the rmFalsh function to get a flash-less dataset
+            tmp3.("flashPeriods") = flashIDX; % Add the indices of the flash response per video to the tmp3 structure, or empty if no flash exists
+            tmp3.("wholetrace_input") = NormalizeFlnrm(act); % Normalize data
+            tmp3.wholetrace_input(:,1:skipFirst) = nan; % Suppress 1:skipFirst datapoints due to photobleaching
+            %%% Create temporary placeholder variables to maintain size of Comps structure,
+            %%% will be replaced below if include_differentials is TRUE
+            tmp3.("wholetrace_diff") = [];
+            tmp3.("corrs") = [];
+            tril_mat = [];
+            tmp3.("corrs_tril") = [];
+            %%% End temporary placeholder variables
+            trace = double(tmp.traces); % Reduce "traces" variable of tracker output from int64 to double
+            [K,J] = size(trace,[1,2]); % Get size of trace variable
+            Dist_mat = zeros(K,J); % Create empty Distance matrix map
+            for k = 1:K
+                for j = 2:J
+                    Dist_mat(k,j) = distCalc(squeeze(trace(k,j,:)),squeeze(trace(k,j-1,:))); % Compute geometric distance between roi and timepoint, enter in corresponding cell of Dist_mat
+                end
+            end
+            tmp3.("roiMovementDistanceMatrix") = Dist_mat; % Adds distance matrix to the tmp3 structure
+            tmp3.("meanMovementPerNeuronVolume_stochasticRegion") = mean(Dist_mat(:,(skipFirst+1):(skipFirst+(stochasticPeriod*60./dT))),[1,2]); % Computes mean movement per neuron-volume and adds to tmp3 structure
+            if ~isempty(tmp3.flashPeriods)
+                tmp3.("meanStimulatedActivity") = meanPeakActivity(tmp3.wholetrace_input,tmp3.flashPeriods,flash_period_to_calc); % Compute mean activation of neuron traces for 50 timepoints after each flash occurs, returns size: [neurons x flashes], add to tmp3 structure
+            else
+                tmp3.("meanStimulatedActivity") = []; % Else: set empty variable to maintain num of variables across analyses runs
+            end
+            Comps(i) = tmp3; % Send outputs from temporary structure (tmp3) to main Comps output structure
         end
-        Comps(i) = tmp3; % Send outputs from temporary structure (tmp3) to main Comps output structure
+    end
+else
+    fprintf('Conditions not met. Code will run single threaded only.\n');
+    % Iterate by file in fileList, compute main metrics
+    for i = 1:size(fileList,1)
+        if contains(fileList(i).name,"Experiment")
+            continue % Reject anything in the current folder with "Experiment" in the name --> an indicator of analysis output file!
+        else
+            tmp3 = [];
+            disp(sprintf("Now Analyzing: %s, %s",fileList(i).name,datetime("now"))); % Indicate which file is currently being analyzed and the time/date of such analysis being initiated
+            tmp = load(fileList(i).name); % Load data
+            tmp3.("fn") = string(fileList(i).name); % Capture filename, add to tmp3 structure
+            tmp3.("input") = tmp.activity.GCaMP; % Add raw data to tmp3
+            [act,flashIDX] = rmFlash(tmp3.input); % Run the rmFalsh function to get a flash-less dataset
+            tmp3.("flashPeriods") = flashIDX; % Add the indices of the flash response per video to the tmp3 structure, or empty if no flash exists
+            tmp3.("wholetrace_input") = NormalizeFlnrm(act); % Normalize data
+            tmp3.wholetrace_input(:,1:skipFirst) = nan; % Suppress 1:skipFirst datapoints due to photobleaching
+            %%% Create temporary placeholder variables to maintain size of Comps structure,
+            %%% will be replaced below if include_differentials is TRUE
+            tmp3.("wholetrace_diff") = [];
+            tmp3.("corrs") = [];
+            tril_mat = [];
+            tmp3.("corrs_tril") = [];
+            %%% End temporary placeholder variables
+            trace = double(tmp.traces); % Reduce "traces" variable of tracker output from int64 to double
+            [K,J] = size(trace,[1,2]); % Get size of trace variable
+            Dist_mat = zeros(K,J); % Create empty Distance matrix map
+            for k = 1:K
+                for j = 2:J
+                    Dist_mat(k,j) = distCalc(squeeze(trace(k,j,:)),squeeze(trace(k,j-1,:))); % Compute geometric distance between roi and timepoint, enter in corresponding cell of Dist_mat
+                end
+            end
+            tmp3.("roiMovementDistanceMatrix") = Dist_mat; % Adds distance matrix to the tmp3 structure
+            tmp3.("meanMovementPerNeuronVolume_stochasticRegion") = mean(Dist_mat(:,(skipFirst+1):(skipFirst+(stochasticPeriod*60./dT))),[1,2]); % Computes mean movement per neuron-volume and adds to tmp3 structure
+            if ~isempty(tmp3.flashPeriods)
+                tmp3.("meanStimulatedActivity") = meanPeakActivity(tmp3.wholetrace_input,tmp3.flashPeriods,flash_period_to_calc); % Compute mean activation of neuron traces for 50 timepoints after each flash occurs, returns size: [neurons x flashes], add to tmp3 structure
+            else
+                tmp3.("meanStimulatedActivity") = []; % Else: set empty variable to maintain num of variables across analyses runs
+            end
+            Comps(i) = tmp3; % Send outputs from temporary structure (tmp3) to main Comps output structure
+        end
     end
 end
 
 Comps = Comps(~arrayfun(@(x) isempty(x.fn), Comps)); % Remove empty rows of Comps structure before computing differentials, if exist
 
 if included_differentials % Only run if the include_differentials init variable is True, else don't
+    disp(sprintf("Computing User Requested Differentials: %s",datetime("now")));
     WT = struct2mat(3,Comps,[],'wholetrace_input'); % Get whole traces from main structure
     WT_cropped_filled = pagetranspose(fillmissing(pagetranspose(WT(:,(skipFirst+1):(skipFirst+(stochasticPeriod*60./dT)),:)),"nearest",1)); % Crop down data to stochastic region indicated, fill any remaining NaN values in the matrix
     diffMat = pardiffall(WT_cropped_filled, num_parallel_cores); % Run differentiation
     mcorrDiff = mcorr(diffMat); % Compute pairwise correlations by page
     corrs = [];
     for i = 1:size(mcorrDiff,3)
-	    tmp=tril(mcorrDiff(:,:,i),-1); tmp(tmp==0)=nan; % Get lower triangle of each page of correlations
-	    corrs=safecat(2,corrs,tmp(:)); % concatenate linear array of lower triangle
+        tmp=tril(mcorrDiff(:,:,i),-1); tmp(tmp==0)=nan; % Get lower triangle of each page of correlations
+        corrs=safecat(2,corrs,tmp(:)); % concatenate linear array of lower triangle
     end
-    parfor (i = 1:size(Comps,1), num_parallel_cores);
-        Comps(i).("wholetrace_diff") = diffMat(:,:,i); % Add differentials to Comps structure
-        Comps(i).("corrs") = mcorrDiff(:,:,i); % Add correlations to Comps structure
-        Comps(i).("corrs_tril") = corrs(:,i); % Add lower triangle linear arrays to Comps structure
+    if hasPCT && ~isequal(num_parallel_cores, 1) % Only run if toolbox exists AND num_parallel_cores ~= 1
+        if isempty(gcp('nocreate'))  % Start pool if not already running
+            parpool; % Should default to some maximum size based on the needs of the computer and the installation conditions. Manually specifying a large number may cause system instability.
+        end
+        parfor (i = 1:size(Comps,1), num_parallel_cores);
+            Comps(i).("wholetrace_diff") = diffMat(:,:,i); % Add differentials to Comps structure
+            Comps(i).("corrs") = mcorrDiff(:,:,i); % Add correlations to Comps structure
+            Comps(i).("corrs_tril") = corrs(:,i); % Add lower triangle linear arrays to Comps structure
+        end
+    else
+        for i = 1:size(Comps,1)
+            Comps(i).("wholetrace_diff") = diffMat(:,:,i); % Add differentials to Comps structure
+            Comps(i).("corrs") = mcorrDiff(:,:,i); % Add correlations to Comps structure
+            Comps(i).("corrs_tril") = corrs(:,i); % Add lower triangle linear arrays to Comps structure
+        end
     end
 end
 
@@ -154,53 +217,53 @@ end
 
 function output = safecat(dim,A,B,blank)
 % output = safecat(dim,A,B,blank)
-%           like cat function but works with matrices of different size.  
+%           like cat function but works with matrices of different size.
 %           Now N-dim arrays supported also.
 %           blank is default [NaN]... undefined elements set to blank
 
-    if nargin < 4 blank = NaN; end
+if nargin < 4 blank = NaN; end
 
-    maxdims = max([ndims(A), ndims(B), dim]);
-    sizes = [size(A), repmat(1,1,maxdims - ndims(A)); ...
-             size(B), repmat(1,1,maxdims - ndims(B))];
+maxdims = max([ndims(A), ndims(B), dim]);
+sizes = [size(A), repmat(1,1,maxdims - ndims(A)); ...
+    size(B), repmat(1,1,maxdims - ndims(B))];
 
-    % test for empty matrix
-    if isempty(A) 
-        output = B;
-    elseif isempty(B)
-        output = A;
-    else
-        maxsize = max(sizes);
+% test for empty matrix
+if isempty(A)
+    output = B;
+elseif isempty(B)
+    output = A;
+else
+    maxsize = max(sizes);
 
-        if any(sizes(1,:) < maxsize)
-            dimexpand = find(sizes(1,:) < maxsize);
-            dimexpand = dimexpand(find(dimexpand ~= dim)); % don't expand on 'dim' dimension
-            for i = 1:length(dimexpand)
-                S.type = '()'; S.subs = {};
-                for j = 1:length(maxsize); S.subs{j}=1:maxsize(j); end
-                S.subs{dim} = 1:sizes(1,dim);
-                S.subs{dimexpand(i)} = (sizes(1,dimexpand(i))+1):maxsize(dimexpand(i));
-                A = subsasgn(A,S,blank); 
-            end
+    if any(sizes(1,:) < maxsize)
+        dimexpand = find(sizes(1,:) < maxsize);
+        dimexpand = dimexpand(find(dimexpand ~= dim)); % don't expand on 'dim' dimension
+        for i = 1:length(dimexpand)
+            S.type = '()'; S.subs = {};
+            for j = 1:length(maxsize); S.subs{j}=1:maxsize(j); end
+            S.subs{dim} = 1:sizes(1,dim);
+            S.subs{dimexpand(i)} = (sizes(1,dimexpand(i))+1):maxsize(dimexpand(i));
+            A = subsasgn(A,S,blank);
         end
-
-        if any(sizes(2,:) < maxsize)
-            dimexpand = find(sizes(2,:) < maxsize);
-            dimexpand = dimexpand(find(dimexpand ~= dim)); % don't expand on 'dim' dimension
-            for i = 1:length(dimexpand)
-                S.type = '()'; S.subs = {};
-                for j = 1:length(maxsize); S.subs{j}=1:maxsize(j); end
-                S.subs{dim} = 1:sizes(2,dim);
-                S.subs{dimexpand(i)} = (sizes(2,dimexpand(i))+1):maxsize(dimexpand(i));
-                B = subsasgn(B,S,blank); 
-            end
-        end
-
-        output = cat(dim,A,B);
     end
+
+    if any(sizes(2,:) < maxsize)
+        dimexpand = find(sizes(2,:) < maxsize);
+        dimexpand = dimexpand(find(dimexpand ~= dim)); % don't expand on 'dim' dimension
+        for i = 1:length(dimexpand)
+            S.type = '()'; S.subs = {};
+            for j = 1:length(maxsize); S.subs{j}=1:maxsize(j); end
+            S.subs{dim} = 1:sizes(2,dim);
+            S.subs{dimexpand(i)} = (sizes(2,dimexpand(i))+1):maxsize(dimexpand(i));
+            B = subsasgn(B,S,blank);
+        end
+    end
+
+    output = cat(dim,A,B);
+end
 end
 
-%% struct2mat 
+%% struct2mat
 %   pulls structure information into matrices
 %
 %   Example:
@@ -211,18 +274,18 @@ end
 
 function output = struct2mat(dim,structure,index,fields)
 
-    if ~iscell(fields) fields = {fields}; end
-    if isempty(index) index = 1:numel(structure); end
+if ~iscell(fields) fields = {fields}; end
+if isempty(index) index = 1:numel(structure); end
 
-    output = [];
-    for i = 1:length(index)
-        substructure = structure(index(i));
-        for j = 1:length(fields)
-            substructure = getfield(substructure,char(fields(j)));
-        end
-
-        output = safecat(dim,output,substructure);
+output = [];
+for i = 1:length(index)
+    substructure = structure(index(i));
+    for j = 1:length(fields)
+        substructure = getfield(substructure,char(fields(j)));
     end
+
+    output = safecat(dim,output,substructure);
+end
 end
 
 %% Compute mean flash period amplitude
@@ -521,27 +584,36 @@ end
 %% pardiffall Parallelized runtime for tvdiff
 function output = pardiffall(act,num_parallel_cores)
 
-% 3D array of neuron traces neuron, frames, epoc(trial) 
-% takes the discreate diriviative for each neuron trace 
-% outputs the dirivative signals in the same format 
+% 3D array of neuron traces neuron, frames, epoc(trial)
+% takes the discreate diriviative for each neuron trace
+% outputs the dirivative signals in the same format
 
 act=double(act);
 lthnrm=length(act(:,1,1));
 lthfrm=length(act(1,:,1));
 lthep=length(act(1,1,:));
 
+hasPCT = license('test', 'Distrib_Computing_Toolbox'); % Check if Parallel Computing Toolbox is installed
 
-parfor (ep=1:lthep, num_parallel_cores);
-    
-    for nr=1:lthnrm
-        tmp=tvdiff(act(nr,:,ep),20,0.1,[],[],'large'); %take deriviative of that trace for that neuron 
-        act(nr,:,ep)=tmp(1:lthfrm); 
+if hasPCT && ~isequal(num_parallel_cores, 1) % Only run if toolbox exists AND num_parallel_cores ~= 1
+    parfor (ep=1:lthep, num_parallel_cores)
+        for nr=1:lthnrm
+            tmp=tvdiff(act(nr,:,ep),20,0.1,[],[],'large'); %take deriviative of that trace for that neuron
+            act(nr,:,ep)=tmp(1:lthfrm);
+        end
+        disp(ep);
     end
-    ep
+else
+    for ep=1:lthep
+        for nr=1:lthnrm
+            tmp=tvdiff(act(nr,:,ep),20,0.1,[],[],'large'); %take deriviative of that trace for that neuron
+            act(nr,:,ep)=tmp(1:lthfrm);
+        end
+        disp(ep);
+    end
 end
 
-
-output=act;    
+output=act;
 end
 
 %% MMean: Multi Dimensional Mean Finder
